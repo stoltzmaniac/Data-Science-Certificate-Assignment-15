@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library('tidyverse')
+library('prophet') # install.packages('prophet')
 
 dat = read_csv('air_passengers.csv')
 dat
@@ -124,6 +125,31 @@ dat_final %>%
   geom_point(aes(y = y)) + 
   geom_line(aes(y = fitted_y), col = 'blue') + 
   geom_line(aes(y = seasonal_forecast), col = 'red')
+```
+
+
+```{r}
+decompose(AirPassengers)
+```
+
+
+```{r}
+plot(decompose(AirPassengers))
+```
+
+```{r}
+dat_prophet = dat_final %>% select(ds = date, y) # required naming convention
+
+model_prophet = prophet(dat_prophet, yearly.seasonality = TRUE)
+
+future = make_future_dataframe(model_prophet, periods = 12, freq = 'month')
+
+fcast = predict(model_prophet, future)
+```
+
+
+```{r}
+plot(model_prophet, fcast)
 ```
 
 
