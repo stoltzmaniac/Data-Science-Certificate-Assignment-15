@@ -1,0 +1,130 @@
+---
+title: "In Class"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library('tidyverse')
+
+dat = read_csv('air_passengers.csv')
+dat
+```
+
+Let's convert to "x and y" instead of date and passengers.
+How can we create an "x" column to fit into y = mx + b ?
+```{r}
+dat_calcs = dat %>%
+  rename(y = passengers) %>%
+  mutate(x = row_number(),
+         x_squared = x^2,
+         x_y = x*y)
+dat_calcs
+```
+
+Without using `lm()` -- let's use the analytical formula to find the slope & intercept. <https://www.statisticshowto.datasciencecentral.com/wp-content/uploads/2009/11/linearregressionequations.bmp>
+```{r}
+dat_sums = dat_calcs %>%
+  summarize(sum_y = sum(y),
+            sum_x_squared = sum(x_squared),
+            sum_x = sum(x),
+            sum_x_y = sum(x*y),
+            n = nrow(dat_calcs))
+dat_sums
+```
+
+Slope & intercept
+
+```{r}
+slope = (dat_sums$n*dat_sums$sum_x_y - dat_sums$sum_x*dat_sums$sum_y) / 
+        (dat_sums$n*dat_sums$sum_x_squared - (dat_sums$sum_x^2))
+```
+
+```{r}
+intercept = (dat_sums$sum_y*dat_sums$sum_x_squared - dat_sums$sum_x*dat_sums$sum_x_y) / 
+            (dat_sums$n*dat_sums$sum_x_squared - (dat_sums$sum_x)^2)
+```
+
+Do they match?
+```{r}
+lm(y ~ x, data = dat_calcs)
+```
+
+```{r}
+dat_lm = dat_calcs %>%
+  mutate(fitted_y = x*slope + intercept)
+
+dat_lm %>%
+  ggplot() +
+  geom_line(aes(x = x, y = y)) +
+  geom_point(aes(x = x, y = y)) + 
+  geom_line(aes(x = x, y = fitted_y), col = 'blue')
+```
+
+Find the percent error
+```{r}
+dat_lm_error = dat_lm %>%
+  mutate(pct_mean_error = y / fitted_y) %>%
+  select(date, x, y, fitted_y, pct_mean_error)
+  
+dat_lm_error
+```
+
+Find the percent average error per season
+```{r}
+months = 1:12 # 1 year
+season_vector = rep(months, nrow(dat_lm)/12) # repeat for number of years
+
+dat_lm_seasonal_avg = dat_lm_error %>%
+  mutate(season = season_vector) %>%
+  group_by(season) %>%
+  mutate(mean_pct_seasonal_error = mean(pct_mean_error)) %>%
+  ungroup()
+
+seasonal_error_tibble = dat_lm_seasonal_avg %>%
+  group_by(season) %>%
+  summarize(mean_pct_seasonal_error = max(mean_pct_seasonal_error))
+
+seasonal_error_tibble
+```
+
+
+```{r}
+dat_final = dat_lm_seasonal_avg %>%
+  mutate(seasonal_forecast = fitted_y*mean_pct_seasonal_error)
+  
+
+dat_final %>%
+  ggplot(aes(x = x)) +
+  geom_line(aes(y = y)) +
+  geom_point(aes(y = y)) + 
+  geom_line(aes(y = fitted_y), col = 'blue') + 
+  geom_line(aes(y = seasonal_forecast), col = 'red')
+```
+
+Create a 1 year forecast
+Extrapolate this forecast - must extend `x`
+```{r}
+x_additions = (max(dat_final$x)+1):max(dat_final$x + 12)
+x_vector = c(dat_final$x, x_additions)
+
+months = 1:12 # 1 year
+season_vector = rep(months, 1 + (nrow(dat_final)/12)) # repeat for number of years + 1 (for forecast)
+
+forecast_tibble = tibble(x = x_vector, season = season_vector)
+forecast_tibble
+
+dat_final %>% 
+  bind_rows(forecast_tibble) %>%
+  select(x, y, season) %>%
+  left_join(seasonal_error_tibble, by = 'season') %>%
+  mutate(fitted_y = (x*slope + intercept),
+         seasonal_forecast = fitted_y * mean_pct_seasonal_error) %>%
+  ggplot(aes(x = x)) +
+  geom_point(aes(y = y)) + 
+  geom_line(aes(y = fitted_y), col = 'blue') + 
+  geom_line(aes(y = seasonal_forecast), col = 'red')
+```
+
+
+
